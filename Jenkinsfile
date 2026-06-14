@@ -1,26 +1,33 @@
-// CI for nginx-idp-vibe-app-2: kaniko build -> in-cluster registry -> bump chart image.tag.
-// Mirrors the idp-sample-nginx pattern; reuses the `github-pat` Jenkins credential.
+// CI for nginx-idp-vibe-app-2: kaniko builds the Dockerfile and pushes :latest.
 pipeline {
-  agent { kubernetes { yamlFile 'jenkins-pod.yaml' } }
+  agent {
+    kubernetes {
+      yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:debug
+      imagePullPolicy: IfNotPresent
+      command: ["/busybox/cat"]
+      tty: true
+'''
+    }
+  }
+  options { disableConcurrentBuilds(); buildDiscarder(logRotator(numToKeepStr: '20')) }
+  environment { REGISTRY = 'kind-registry:5000'; IMAGE_REPO = 'lw-idp/nginx-idp-vibe-app-2' }
   stages {
-    stage('build & push') {
+    stage('Build & push image') {
       steps {
         container('kaniko') {
-          sh '/kaniko/executor --context=`pwd` --dockerfile=Dockerfile ' +
-             "--destination=kind-registry:5000/lw-idp/nginx-idp-vibe-app-2:${env.GIT_COMMIT}"
-        }
-      }
-    }
-    stage('bump tag') {
-      steps {
-        // GITHUB_ORG must be provided as a Jenkins global env var (the org that owns this repo).
-        withCredentials([string(credentialsId: 'github-pat', variable: 'GITHUB_PAT')]) {
           sh '''
-            sed -i "s|tag: .*|tag: \\"${GIT_COMMIT}\\"|" chart/values.yaml
-            git config user.email "jenkins@lw-idp.local"
-            git config user.name "jenkins"
-            git commit -am "ci: bump nginx-idp-vibe-app-2 image tag to ${GIT_COMMIT}"
-            git push https://${GITHUB_PAT}@github.com/${GITHUB_ORG}/nginx-idp-vibe-app-2.git HEAD:main
+            /kaniko/executor \
+              --dockerfile=Dockerfile \
+              --context=. \
+              --destination=${REGISTRY}/${IMAGE_REPO}:latest \
+              --destination=${REGISTRY}/${IMAGE_REPO}:${GIT_COMMIT} \
+              --insecure --skip-tls-verify
           '''
         }
       }
