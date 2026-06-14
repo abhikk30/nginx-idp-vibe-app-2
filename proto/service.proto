@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package nginx_idp_vibe_app_2.v1;
+
+service DomainService {
+  // Returns a greeting message along with the pod name
+  rpc GetGreeting (GetGreetingRequest) returns (GetGreetingResponse);
+}
+
+message GetGreetingRequest {}
+
+message GetGreetingResponse {
+  string message  = 1; // "Hello from IDP"
+  string pod_name = 2; // Name of the pod serving the request
+}
